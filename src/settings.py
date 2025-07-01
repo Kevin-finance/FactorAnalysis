@@ -83,6 +83,8 @@ d["DATA_DIR"] = if_relative_make_abs(_config('DATA_DIR', default=Path('_data'), 
 d["MANUAL_DATA_DIR"] = if_relative_make_abs(_config('MANUAL_DATA_DIR', default=Path('data_manual'), cast=Path))
 d["OUTPUT_DIR"] = if_relative_make_abs(_config('OUTPUT_DIR', default=Path('_output'), cast=Path))
 d["PUBLISH_DIR"] = if_relative_make_abs(_config('PUBLISH_DIR', default=Path('_output/publish'), cast=Path))
+d["FAMA_DATA_DIR"] = if_relative_make_abs(_config('FAMA_DATA_DIR', default=Path('fama_french_fct_data'), cast=Path))
+d["FAMA_OUTPUT_DIR "] = if_relative_make_abs(_config('FAMA_OUTPUT_DIR', default=Path('fama_french_fct_output'), cast=Path))
 # fmt: on
 
 
