@@ -44,7 +44,8 @@ def pull_fred(num,order_by,sort_order,release = 'latest', *args,**kwargs):
     # We will have a time series to be used for each dates.
     # https://github.com/mortada/fredapi/blob/master/fredapi/fred.py
         
-    
+    # release date is not there so, might need subscription to get the data
+    # https://tradefeeds.com/pricing-subscription-plans/
 
 
     return (mapping_df,merged)
