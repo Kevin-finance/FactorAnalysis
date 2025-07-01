@@ -12,11 +12,15 @@ class Preprocessor:
         self.df = pd.read_parquet(path)
 
         return self.df 
-    
-    def detrend(self):
+    # def group_by(self,column_id):
+
+
+
+
+    def difference(self):
         # How do we check if its trending?
         # Rates - difference, level - log diff
-        
+
         return self
 
     def deseaonalize(self):
