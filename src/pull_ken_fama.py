@@ -7,7 +7,9 @@ import zipfile
 from settings import config
 
 FAMA_DATA_DIR = config("FAMA_DATA_DIR")
-DATA_LIB_URL = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library_202412_archive.html"
+START_DATE =  config("START_DATE")
+END_DATE = config("END_DATE")
+DATA_LIB_URL = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html"
 
 FACTOR_DESCRIPTIONS = [
     "Portfolios Formed on Operating Profitability [ex. Dividends]",
@@ -97,8 +99,10 @@ def auto_read_first_table_from_txt(data_str):
         StringIO(csv_str),
         index_col=0,
         parse_dates=True,
-        date_parser=lambda x: pd.to_datetime(x, format='%Y%m')
+        date_format='%Y%m'
     )
+    
+    df = df[(df.index >= START_DATE) & (df.index <= END_DATE)]
 
     df.replace([-99.99, -999], pd.NA, inplace=True)
     df = df.apply(pd.to_numeric, errors='coerce') / 100
