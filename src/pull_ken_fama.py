@@ -1,93 +1,109 @@
 import pandas as pd
 import requests
-from io import StringIO
+from bs4 import BeautifulSoup
+from io import StringIO, BytesIO
 import os
+import zipfile
 from settings import config
 
 FAMA_DATA_DIR = config("FAMA_DATA_DIR")
-START_DATE = config("START_DATE")
-END_DATE = config("END_DATE")
+DATA_LIB_URL = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library_202412_archive.html"
 
-BASE_URL = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/"
+FACTOR_DESCRIPTIONS = [
+    "Portfolios Formed on Operating Profitability [ex. Dividends]",
+    "Portfolios Formed on Investment [ex. Dividends]",
+    "Portfolios Formed on Earnings/Price [ex. Dividends]",
+    "Portfolios Formed on Cashflow/Price [ex. Dividends]",
+    "Portfolios Formed on Dividend Yield [ex. Dividends]",
+    "Short-Term Reversal Factor (ST Rev)",
+    "Long-Term Reversal Factor (LT Rev)",
+    "Portfolios Formed on Accruals",
+    "Portfolios Formed on Market Beta",
+    "Portfolios Formed on Net Share Issues",
+    "Portfolios Formed on Variance",
+    "Portfolios Formed on Residual Variance"
+]
 
-FACTOR_FILES = {
-    'EP_exDiv': 'Portfolios_Formed_on_E-P_Wout_Div.csv',
-    'CFP_exDiv': 'Portfolios_Formed_on_CF-P_Wout_Div.csv',
-    'DP_exDiv': 'Portfolios_Formed_on_D-P_Wout_Div.csv',
-    'Net_Share_Issues': 'Portfolios_Formed_on_NI.csv',
-    'Accruals': 'Portfolios_Formed_on_AC.csv',
-    'Market_Beta': 'Portfolios_Formed_on_BETA.csv',
-    'Variance': 'Portfolios_Formed_on_VAR.csv',
-    'Residual_Variance': 'Portfolios_Formed_on_RESVAR.csv',
-    'ST_Reversal': 'F-F_ST_Reversal_Factor.csv',
-    'LT_Reversal': 'F-F_LT_Reversal_Factor.csv'
-}
+def download_and_process_zip(factor_descriptions, save_folder=FAMA_DATA_DIR):
+    if not os.path.exists(save_folder):
+        os.makedirs(save_folder)
 
-def auto_read_first_table_from_string(data_str):
-    # Read the CSV data from a string, automatically identifying first data table
-    lines = data_str.splitlines()
+    res = requests.get(DATA_LIB_URL)
+    res.raise_for_status()
 
-    # Identify start of first table (header line starts with a comma)
+    soup = BeautifulSoup(res.content, "html.parser")
+
+    for desc in factor_descriptions:
+        link_found = False
+        for factor in soup.find_all("b"):
+            if desc in factor.text:
+                zip_link = factor.find_next("a", string="TXT")
+                if zip_link:
+                    zip_href = zip_link.get("href")
+                    full_url = f"https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/{zip_href}"
+                    print(f"Downloading and processing: {desc} from {full_url}")
+
+                    file_res = requests.get(full_url)
+                    file_res.raise_for_status()
+
+                    with zipfile.ZipFile(BytesIO(file_res.content)) as z:
+                        for txt_file in z.namelist():
+                            with z.open(txt_file) as file:
+                                data_str = file.read().decode('latin1')
+                                df = auto_read_first_table_from_txt(data_str)
+
+                                csv_file_name = os.path.splitext(txt_file)[0] + '.csv'
+                                csv_file_path = os.path.join(save_folder, csv_file_name)
+                                df.to_csv(csv_file_path)
+                                print(f"Processed and saved to {csv_file_path}")
+
+                    link_found = True
+                    break
+
+        if not link_found:
+            print(f"Could not find ZIP link for '{desc}'.")
+
+def auto_read_first_table_from_txt(data_str):
+    lines = data_str.strip().split('\n')
+
     data_start = None
     for idx, line in enumerate(lines):
-        if line.startswith(',') or (',' in line and line.strip().split(',')[0] == ''):
+        if line.strip().startswith(('19', '20')):
             data_start = idx
             break
 
     if data_start is None:
-        raise ValueError("Cannot find the start of data table")
+        raise ValueError("Cannot find the start of the data table")
 
-    # Identify the end of the first table (empty line)
     data_end = None
-    for idx in range(data_start + 1, len(lines)):
-        if lines[idx].strip() == '':
+    for idx in range(data_start, len(lines)):
+        if lines[idx].strip() == "":
             data_end = idx
             break
 
     if data_end is None:
         data_end = len(lines)
 
-    # Extract the lines corresponding to the first table
     data_lines = lines[data_start:data_end]
 
-    # Join the extracted lines and read into DataFrame
-    first_table_str = '\n'.join(data_lines)
-    df = pd.read_csv(StringIO(first_table_str), index_col=0)
+    header_line = lines[data_start - 1].strip().split()
+    csv_str = f"date,{','.join(header_line)}\n"
 
-    # Clean data
-    df = df.dropna(how='all')
-    df.index = pd.to_datetime(df.index, format='%Y%m', errors='coerce')
-    df = df.dropna(axis=0, how='all')
+    for line in data_lines:
+        parts = line.strip().split()
+        csv_str += ','.join(parts) + '\n'
 
-    # Convert percentages to decimals
+    df = pd.read_csv(
+        StringIO(csv_str),
+        index_col=0,
+        parse_dates=True,
+        date_parser=lambda x: pd.to_datetime(x, format='%Y%m')
+    )
+
+    df.replace([-99.99, -999], pd.NA, inplace=True)
     df = df.apply(pd.to_numeric, errors='coerce') / 100
-    
-    df.index.name = 'date'
-    
+
     return df
 
-def download_and_save_all_factors(save_folder=FAMA_DATA_DIR):
-    if not os.path.exists(save_folder):
-        os.makedirs(save_folder)
-
-    for factor, file_name in FACTOR_FILES.items():
-        print(f"Downloading and processing {factor}...")
-        try:
-            # Download file content
-            url = BASE_URL + file_name
-            res = requests.get(url)
-            res.raise_for_status()
-
-            # Process downloaded content directly
-            df = auto_read_first_table_from_string(res.text)
-            
-            # Save processed DataFrame to CSV
-            save_path = os.path.join(save_folder, file_name)
-            df.to_csv(save_path)
-            print(f"Saved {factor} to {save_path}")
-
-        except Exception as e:
-            print(f"Failed to process {factor}: {e}")
-
 if __name__ == "__main__":
-    download_and_save_all_factors()
+    download_and_process_zip(FACTOR_DESCRIPTIONS)
