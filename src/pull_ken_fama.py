@@ -68,41 +68,18 @@ def download_and_process_zip(factor_descriptions, save_folder=FAMA_DATA_DIR):
 def auto_read_first_table_from_txt(data_str):
     lines = data_str.strip().split('\n')
 
-    data_start = None
-    for idx, line in enumerate(lines):
-        if line.strip().startswith(('19', '20')):
-            data_start = idx
-            break
-
-    if data_start is None:
-        raise ValueError("Cannot find the start of the data table")
-
-    data_end = None
-    for idx in range(data_start, len(lines)):
-        if lines[idx].strip() == "":
-            data_end = idx
-            break
-
-    if data_end is None:
-        data_end = len(lines)
-
+    data_start = next(idx for idx, line in enumerate(lines) if line.strip().startswith(('19', '20')))
+    data_end = next((idx for idx in range(data_start, len(lines)) if lines[idx].strip() == ""), len(lines))
+    
     data_lines = lines[data_start:data_end]
-
-    header_line = lines[data_start - 1].strip().split()
-    csv_str = f"date,{','.join(header_line)}\n"
-
-    for line in data_lines:
-        parts = line.strip().split()
-        csv_str += ','.join(parts) + '\n'
-
-    df = pd.read_csv(
-        StringIO(csv_str),
-        index_col=0,
-        parse_dates=True,
-        date_format='%Y%m'
-    )
+    header_line = lines[data_start - 1]
+    
+    table_str = '\n'.join([header_line] + data_lines)
+    df = pd.read_fwf(StringIO(table_str), index_col=0)
+    df.index = pd.to_datetime(df.index, format='%Y%m', errors='coerce')
     
     df = df[(df.index >= START_DATE) & (df.index <= END_DATE)]
+    df.index.name = 'date'
 
     df.replace([-99.99, -999], pd.NA, inplace=True)
     df = df.apply(pd.to_numeric, errors='coerce') / 100
