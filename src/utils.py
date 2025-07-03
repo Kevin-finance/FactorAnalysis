@@ -139,6 +139,7 @@ def plot_acf_subplots(df, map_df, max_lag=12, dimension=(10, 7), alpha=0.05):
 
 
 if __name__=="__main__":
+    print("HI")
     macro_map_dir = DATA_DIR/"macro_map.parquet"
     macro_latest_series = DATA_DIR/"macro_latest_series.parquet"
 
