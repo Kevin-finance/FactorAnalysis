@@ -1,5 +1,4 @@
 import pandas as pd
-from pandas.tseries.offsets import MonthEnd, YearEnd
 
 import numpy as np
 import wrds
@@ -12,6 +11,7 @@ DATA_DIR = config("DATA_DIR")
 WRDS_USERNAME = config("WRDS_USERNAME")
 START_DATE = config("START_DATE")
 END_DATE = config("END_DATE")
+FAMA_DATA_DIR  = config('FAMA_DATA_DIR')
 
 
 def pull_lseg(START_DATE, END_DATE,wrds_username = WRDS_USERNAME):
@@ -37,6 +37,7 @@ def pull_lseg(START_DATE, END_DATE,wrds_username = WRDS_USERNAME):
     db.close()
 
     return holdings
+
 
 def pull_crsp_returns(START_DATE, END_DATE, tickers ,wrds_username = WRDS_USERNAME, monthly= True):
 
@@ -76,6 +77,32 @@ def pull_crsp_returns(START_DATE, END_DATE, tickers ,wrds_username = WRDS_USERNA
     return crsp
 
 
+def pull_famafrench_5fctplusmom_monthly_wrds(start_date, end_date, wrds_username):
+    """_summary_
+
+    Args:
+        start_date (_type_): start date
+        end_date (_type_): end date
+        wrds_username (_type_): wrds username
+    
+    Returns:
+        pd.DataFrame: df includes ['date', 'mktrf', 'smb', 'hml', 'rmw', 'cma', 'umd', 'rf']
+    """
+    
+    db = wrds.Connection(wrds_username=wrds_username)
+    query = f"""
+        SELECT date, mktrf, smb, hml, rmw, cma, umd, rf
+        FROM ff_all.fivefactors_monthly
+        WHERE date BETWEEN '{start_date}' AND '{end_date}'
+        ORDER BY date
+    """
+    df = db.raw_sql(query, date_cols = ['date'])
+    db.close()
+    
+    df.set_index('date', inplace = True)
+    df = df.astype(float)
+    
+    return df
 
 
 
@@ -92,6 +119,14 @@ if __name__ == "__main__":
     # holdings = pull_lseg(START_DATE, END_DATE , wrds_username=WRDS_USERNAME)
     # holdings.to_parquet(DATA_DIR / "vht_holdings.parquet")
 
+
     # holdings = load_lseg()
     temp = pull_crsp_returns(START_DATE, END_DATE , tickers = ['AAPL','MSFT'],wrds_username = WRDS_USERNAME, monthly = True)
     print(temp)
+
+    holdings = load_lseg()
+    print(holdings)
+    
+    fffct_5plusmom = pull_famafrench_5fctplusmom_monthly_wrds(START_DATE, END_DATE, wrds_username = WRDS_USERNAME)
+    fffct_5plusmom.to_csv(FAMA_DATA_DIR/"famafrench_5fct_momentum_monthly.csv")
+
