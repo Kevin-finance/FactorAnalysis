@@ -11,7 +11,6 @@ DATA_DIR = config("DATA_DIR")
 WRDS_USERNAME = config("WRDS_USERNAME")
 START_DATE = config("START_DATE")
 END_DATE = config("END_DATE")
-FAMA_DATA_DIR  = config('FAMA_DATA_DIR')
 
 
 def pull_lseg(START_DATE, END_DATE,wrds_username = WRDS_USERNAME):
@@ -39,42 +38,48 @@ def pull_lseg(START_DATE, END_DATE,wrds_username = WRDS_USERNAME):
     return holdings
 
 
-def pull_crsp_returns(START_DATE, END_DATE, tickers ,wrds_username = WRDS_USERNAME, monthly= True):
-
-    """Pull necessary returns of basket of VHT holding regardless of its delisted status
-    mthret: Monthly return including dividends
-    mthretx: Monthly return excluding dividends
-    mthprc: 
-    
-    
+def fetch_crsp_data(tickers, start_date, end_date, wrds_username):
     """
+    Fetches specified stock data from WRDS CRSP table (crsp_a_stock.wrds_dsfv2_query).
+
+    Parameters:
+    tickers (list): List of ticker symbols to retrieve.
+    start_date (str): Starting date in 'YYYY-MM-DD' format.
+    end_date (str): Ending date in 'YYYY-MM-DD' format.
+    wrds_username (str): Your WRDS username.
+
+    Returns:
+    pd.DataFrame: DataFrame containing requested data.
+    """
+
     db = wrds.Connection(wrds_username=wrds_username)
-    ticker_str = ', '.join([f"'{t}'" for t in tickers])
-    if monthly == True:
-        sql_query = f"""
-                        Select a.permno, a.permco, a.mthcaldt, a.ticker,
-                        a.issuertype, a.securitytype, a.securitysubtype, a.sharetype, a.usincflg, 
-                        a.primaryexch, a.conditionaltype, a.tradingstatusflg,
-                        a.mthret, a.mthretx, a.shrout, a.mthprc
-                        from crsp.msf_v2 as a
-                        where a.mthcaldt between '{START_DATE}' and '{END_DATE}'
-                        AND a.ticker IN ({ticker_str})
-                    """
-        crsp = db.raw_sql(sql_query, date_cols=["mthcaldt"])
-    else: 
-        sql_query = f"""
-                        Select a.permno, a.permco, a.dlycaldt, a.ticker,
-                        a.issuertype, a.securitytype, a.securitysubtype, a.sharetype, a.usincflg, 
-                        a.primaryexch, a.conditionaltype, a.tradingstatusflg,
-                        a.dlyret, a.dlyretx, a.shrout, a.dlyprc
-                        from crsp.dsf_v2 as a
-                        where a.dlycaldt between '{START_DATE}' and '{END_DATE}'
-                        AND a.ticker IN({ticker_str})
-                    """
-        crsp = db.raw_sql(sql_query, date_cols=["dlycaldt"])
+
+    query = f"""
+        SELECT
+            dispermno,            -- PERMNO of the Security Received
+            dispermco,            -- PERMCO of the Issuer Providing Payment
+            issuertype,           -- Issuer Type
+            securitytype,         -- Security Type
+            securitysubtype,      -- Security Sub-Type
+            dlyret,               -- Daily Total Return
+            dlyretx,              -- Daily Price Return
+            shrout,               -- Shares Outstanding
+            dlyprc,               -- Daily Price
+            tradingstatusflg,     -- Trading Status Flag
+            usincflg,             -- US Incorporation Flag
+            primaryexch,          -- Primary Exchange
+            conditionaltype,      -- Conditional Type
+            ticker,               -- Ticker
+            dlycaldt              -- Daily Calendar Date
+        FROM crsp_a_stock.wrds_dsfv2_query
+        WHERE ticker IN ({','.join([f"'{t}'" for t in tickers])})
+        AND dlycaldt BETWEEN '{start_date}' AND '{end_date}'
+    """
+    
+    df = db.raw_sql(query)
     db.close()
 
-    return crsp
+    return df
 
 
 def pull_famafrench_5fctplusmom_monthly_wrds(start_date, end_date, wrds_username):
@@ -115,16 +120,17 @@ def _demo():
 
 
 if __name__ == "__main__":
-    # holdings = pull_lseg(START_DATE, END_DATE , wrds_username=WRDS_USERNAME)
-    # holdings.to_parquet(DATA_DIR / "vht_holdings.parquet")
-
-
-    # holdings = load_lseg()
-    temp = pull_crsp_returns(START_DATE, END_DATE , tickers = ['AAPL','MSFT'],wrds_username = WRDS_USERNAME, monthly = True)
-    print(temp)
+    holdings = pull_lseg(START_DATE, END_DATE , wrds_username=WRDS_USERNAME)
+    holdings.to_parquet(DATA_DIR / "vht_holdings.parquet")
 
     holdings = load_lseg()
     print(holdings)
     
     fffct_5plusmom = pull_famafrench_5fctplusmom_monthly_wrds(START_DATE, END_DATE, wrds_username = WRDS_USERNAME)
-    fffct_5plusmom.to_csv(FAMA_DATA_DIR/"famafrench_5fct_momentum_monthly.csv")
+    fffct_5plusmom.to_csv(DATA_DIR/"famafrench_5fct_momentum_monthly.csv")
+    
+    df = holdings.copy()
+    df['holdings'] = 1
+    ticker_list = df.pivot_table(index = 'rdate', columns = 'ticker', values = 'holdings').columns.to_list()
+    daily_rtn = fetch_crsp_data(ticker_list, START_DATE, END_DATE, wrds_username = WRDS_USERNAME)
+    daily_rtn.to_parquet(DATA_DIR / "vht_stk_daily_rtn.parquet")
