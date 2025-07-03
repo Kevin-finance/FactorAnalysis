@@ -2,33 +2,90 @@ import pandas as pd
 from openai import OpenAI
 from sec_api import ExtractorApi, QueryApi
 from tqdm import tqdm
-
+from concurrent.futures import ThreadPoolExecutor
 from settings import config
+import time
+import pickle
 
-# SEC_API_KEY = config("SEC_API")
-# extractorApi = ExtractorApi(api_key= SEC_API_KEY)
-# filing_url_8k = "https://www.sec.gov/Archives/edgar/data/66600/000149315222016468/form8-k.htm"
-# # Use CUSIP/CIK/Ticker Mapping API
-
-# #data/#CIK/
-# # extract section 1.01 "Entry into Material Definitive Agreement" as cleaned text
-# extracted_section_8k = extractorApi.get_section(filing_url_8k, "1-1", "text")
-# print(extracted_section_8k)
-
-
-SEC_API_KEY = config("SEC_API")  # or use raw string
+SEC_API_KEY = config("SEC_API") 
 START_DATE = config("START_DATE")
 END_DATE = config("END_DATE")
 OPENAI_SECRET_KEY = config("OPENAI_SECRET")
+DATA_DIR = config("DATA_DIR")
+CHECK_POINT = DATA_DIR / "event_log.pkl"
 
 client = OpenAI(api_key=OPENAI_SECRET_KEY, max_retries = 5 )
-
-# Purpose : For every holdings at the time loop through 8-K and return 1 if have such filings otherwise 0
 
 
 query_api = QueryApi(api_key=SEC_API_KEY)
 extractorApi = ExtractorApi(api_key=SEC_API_KEY)
 
+def get_section_with_retry(url, section, retries=3, delay=2):
+    for attempt in range(retries):
+        try:
+            return extractorApi.get_section(url, section, "text")
+        except Exception as e:
+            if "429" in str(e):
+                print(f"[SEC API] 429 Too Many Requests on {section} for {url} (attempt {attempt+1})")
+                time.sleep(delay * (attempt + 1))
+            else:
+                print(f"[SEC API] Other error on {section}: {e}")
+                break
+    return ""
+
+def classify_filing(url):
+    """
+    This method feeds SEC 8-K section 7.1 and 8.1 to the OPENAI api and returns corresponding events
+    It is useful in the sense that it parallelizes GPT calls, SEC api calls which are a very expensive operation.
+    """
+    extracted_section_7 = get_section_with_retry(url,"7-1")
+    extracted_section_8 = get_section_with_retry(url, "8-1")
+    text = extracted_section_7 + extracted_section_8
+    
+    if (len(text) < 10) or not(("fda" in text.lower()) or ("phase" in text.lower())) : # Doesn't pass texts that are less than length 10 
+        print(text)
+        return None
+    
+    try:
+        instructions = """Suppose you are an investment manager.
+                    If the text clearly states that a Phase 1/2/3 trial successfully met its primary endpoint (e.g. “met its primary endpoint,” “demonstrated significant improvement,” “positive topline results,” “successfully completed,” etc.), return 1, 2, or 3 respectively.
+                    Use only the number *immediately following* the word “Phase” for Phase1/2/3.
+                    If it describes an NDA or BLA submission or resubmission, return 4.
+                    If it describes FDA approval (including PMA or accelerated approval), return 5.
+                    Otherwise (including mere “announcing data,” “first doses,” “Phase 2/3” labels without a clear success statement, or any negative/mixed results like “did not achieve significance”), return -1.;
+                    Review your responses."""
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            instructions = instructions,
+            input=text,
+            )
+        return int(response.output_text.strip())
+    
+    except Exception as e:
+        return None
+
+def extract_intervals(binary_matrix):
+    results = []
+
+    for ticker in binary_matrix.columns:
+        series = binary_matrix[ticker].fillna(0).astype(int)
+
+        # Check with previous values to detect any change
+        prev = series.shift(1, fill_value=0)
+        next_ = series.shift(-1, fill_value=0)
+
+        starts = (series == 1) & (prev == 0)
+        ends = (series == 1) & (next_ == 0)
+
+        start_dates = binary_matrix.index[starts]
+        end_dates = binary_matrix.index[ends]
+
+        # match up with ticker
+        for s, e in zip(start_dates, end_dates):
+            results.append({"ticker": ticker, "start_date": s, "end_date": e})
+    df = pd.DataFrame(results)
+
+    return df
 
 def pull_filings_link(df):
     # df is a panel data with holdings of VHT ETF
@@ -38,32 +95,11 @@ def pull_filings_link(df):
     df["rdate"] = df["rdate"].dt.to_period("M").dt.to_timestamp()
     df.dropna(subset=["ticker"], inplace=True)
     df.loc[:, "exist"] = 1
+
     # This binary matrix returns 1 if its holding at that time 0 otherwise
     binary_matrix = pd.pivot_table(
         df, index="rdate", columns="ticker", values="exist", fill_value=0
     )
-
-    def extract_intervals(binary_matrix):
-        results = []
-
-        for ticker in binary_matrix.columns:
-            series = binary_matrix[ticker].fillna(0).astype(int)
-
-            # 이전 값과 비교해 변화 감지
-            prev = series.shift(1, fill_value=0)
-            next_ = series.shift(-1, fill_value=0)
-
-            starts = (series == 1) & (prev == 0)
-            ends = (series == 1) & (next_ == 0)
-
-            start_dates = binary_matrix.index[starts]
-            end_dates = binary_matrix.index[ends]
-
-            # 매칭해서 ticker별로 결과 저장
-            for s, e in zip(start_dates, end_dates):
-                results.append({"ticker": ticker, "start_date": s, "end_date": e})
-
-        return pd.DataFrame(results)
 
     date_parse_df = extract_intervals(binary_matrix)
     num_interval_df = date_parse_df.groupby("ticker").agg(
@@ -77,7 +113,7 @@ def pull_filings_link(df):
     for ticker in tqdm(merge_df["ticker"].unique(), desc="Processing each tickers"):
         part_df = merge_df[merge_df["ticker"].isin([ticker])]  # only single ticker
         date_ranges = list(
-            part_df[["start_date", "end_date"]].itertuples(index=False, name=None) # 
+            part_df[["start_date", "end_date"]].itertuples(index=False, name=None) 
         )  
         should_clauses = [
             {
@@ -100,7 +136,7 @@ def pull_filings_link(df):
                         "must": [
                             {
                                 "query_string": {
-                                    "query": f'ticker:{ticker} AND formType:"8-K"' # Only Scrap 7-1,8-1 , think we should do multithreading as well 
+                                    "query": f'ticker:{ticker} AND formType:"8-K" AND (items : "7.01" OR items : "8.01")'  # Only Scrap 7-1, 8-1  
                                 }
                             }
                         ],
@@ -144,52 +180,39 @@ def pull_filings_link(df):
             offset += size
 
     # Distinguishing events
-    for ticker in tqdm(filing_dict, desc="Event Processing"):
-        print(ticker)
+    for idx, ticker in enumerate(tqdm(filing_dict, desc="Event Processing")):
+        # print(ticker)
         if "event" not in filing_dict[ticker]:
             filing_dict[ticker]["event"] = []
-        print(ticker)
-        print(filing_dict[ticker]["linkToFilingDetails"])
-        for num in tqdm(
-            range(len(filing_dict[ticker]["linkToFilingDetails"])),
-            desc="GPT Processing",
-        ):
-            url = filing_dict[ticker]["linkToFilingDetails"][num]
-            extracted_section_7 = extractorApi.get_section(
-                url, "7-1", "text"
-            )  # If theres no subsection it returns blank
-            extracted_section_8 = extractorApi.get_section(url, "8-1", "text")
-            # extracted_section_9 = extractorApi.get_section(url, "9-1", "text")
-            texts = extracted_section_7 + extracted_section_8 
-            print(type(texts))
-            print("all ")
-            print(texts)
-            if texts == "":
-                pass
-            else:
-                print("Not None")
-                print(texts)
-                response = client.responses.create(
-                    model="gpt-4o-mini",
-                    instructions="Suppose you are a investment manager. According to the text that is fed, if there FDA approval, \
-                    termination of clinical trial phase 1, 2 or 3 related texts then return: 0 (FDA approval), 1 (Phase 1), 2 (Phase 2), 3 (Phase 3)",
-                    input=texts,
-                )
-                try:
-                    event_number = int(response.output_text.strip())
-                except:
-                    event_number = None
 
-                filing_dict[ticker]["event"].append(event_number)
-                print("event")
-                print(filing_dict[ticker]["event"])
+        # Change
+        filing_urls = filing_dict[ticker]['linkToFilingDetails']
+        with ThreadPoolExecutor( max_workers=20) as executor:
+            events = list(executor.map(classify_filing,filing_urls))
+        filing_dict[ticker]['event'] = events
+
+        if idx % 10 == 0 : 
+            with open(CHECK_POINT, "wb") as f:
+                pickle.dump(filing_dict, f)
+            # print(f" Checkpoint saved at ticker {idx}")
+            # print(f"Saving to {CHECK_POINT.resolve()}")
+            # print(f"📦 filing_dict size at idx {idx}: {len(filing_dict)}")
+            # print(f"📦 {ticker} has {len(filing_dict[ticker]['linkToFilingDetails'])} filings")
+        print(filing_dict[ticker]['event'])
     return filing_dict
 
 
 if __name__ == "__main__":
-    DATA_DIR = config("DATA_DIR")
-    # df = pd.read_parquet(DATA_DIR / "vht_holdings.parquet")
-    # temp = pull_filings_link(df)
-    # temp.to_parquet(DATA_DIR/"filing_dict.parquet")
-    # # print(temp)
+    # Note : it takes around 1hr to produce .pkl file
+    df = pd.read_parquet(DATA_DIR / "vht_holdings.parquet")
+    filings = pull_filings_link(df)
+    
+    with open(DATA_DIR / "filings_dict.pkl", "wb") as f:
+        pickle.dump(filings, f)
+
+    # with open(DATA_DIR / "filing_dict.pkl","rb") as f:
+    #     pickle.load(f)
+    
+
+
     
