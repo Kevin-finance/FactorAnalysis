@@ -66,6 +66,49 @@ def pull_famafrench_5fctplusmom_monthly_wrds(start_date, end_date, wrds_username
     
     return df
 
+def fetch_crsp_data(tickers, start_date, end_date, wrds_username):
+    """
+    Fetches specified stock data from WRDS CRSP table (crsp_a_stock.wrds_dsfv2_query).
+
+    Parameters:
+    tickers (list): List of ticker symbols to retrieve.
+    start_date (str): Starting date in 'YYYY-MM-DD' format.
+    end_date (str): Ending date in 'YYYY-MM-DD' format.
+    wrds_username (str): Your WRDS username.
+
+    Returns:
+    pd.DataFrame: DataFrame containing requested data.
+    """
+
+    db = wrds.Connection(wrds_username=wrds_username)
+
+    query = f"""
+        SELECT
+            dispermno,            -- PERMNO of the Security Received
+            dispermco,            -- PERMCO of the Issuer Providing Payment
+            issuertype,           -- Issuer Type
+            securitytype,         -- Security Type
+            securitysubtype,      -- Security Sub-Type
+            dlyret,               -- Daily Total Return
+            dlyretx,              -- Daily Price Return
+            shrout,               -- Shares Outstanding
+            dlyprc,               -- Daily Price
+            tradingstatusflg,     -- Trading Status Flag
+            usincflg,             -- US Incorporation Flag
+            primaryexch,          -- Primary Exchange
+            conditionaltype,      -- Conditional Type
+            ticker,               -- Ticker
+            dlycaldt              -- Daily Calendar Date
+        FROM crsp_a_stock.wrds_dsfv2_query
+        WHERE ticker IN ({','.join([f"'{t}'" for t in tickers])})
+        AND dlycaldt BETWEEN '{start_date}' AND '{end_date}'
+    """
+    
+    df = db.raw_sql(query)
+    db.close()
+
+    return df
+
 
 def load_lseg(data_dir=DATA_DIR):
     path = Path(data_dir) / "vht_holdings.parquet"
@@ -86,4 +129,10 @@ if __name__ == "__main__":
     print(holdings)
     
     fffct_5plusmom = pull_famafrench_5fctplusmom_monthly_wrds(START_DATE, END_DATE, wrds_username = WRDS_USERNAME)
-    fffct_5plusmom.to_csv(FAMA_DATA_DIR/"famafrench_5fct_momentum_monthly.csv")
+    fffct_5plusmom.to_csv(DATA_DIR/"famafrench_5fct_momentum_monthly.csv")
+    
+    df = holdings.copy()
+    df['holdings'] = 1
+    ticker_list = df.pivot_table(index = 'rdate', columns = 'ticker', values = 'holdings').columns.to_list()
+    daily_rtn = fetch_crsp_data(ticker_list, START_DATE, END_DATE, wrds_username = WRDS_USERNAME)
+    daily_rtn.to_parquet(DATA_DIR / "vht_stk_daily_rtn.parquet")
