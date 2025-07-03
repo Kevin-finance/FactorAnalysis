@@ -4,7 +4,7 @@ from io import StringIO
 import os
 from settings import config
 
-FAMA_DATA_DIR = config("FAMA_DATA_DIR")
+DATA_DIR = config("DATA_DIR")
 START_DATE = config("START_DATE")
 END_DATE = config("END_DATE")
 
@@ -66,7 +66,7 @@ def auto_read_first_table_from_string(data_str):
     
     return df
 
-def download_and_save_all_factors(save_folder=FAMA_DATA_DIR):
+def download_and_save_all_factors(save_folder=DATA_DIR):
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
 
@@ -90,4 +90,7 @@ def download_and_save_all_factors(save_folder=FAMA_DATA_DIR):
             print(f"Failed to process {factor}: {e}")
 
 if __name__ == "__main__":
-    download_and_save_all_factors()
+    # download_and_save_all_factors()
+    print(pd.read_csv(DATA_DIR/"F-F_LT_Reversal_Factor.csv"))
+    print(pd.read_csv(DATA_DIR/"F-F_ST_Reversal_Factor.csv"))
+    print(pd.read_csv(DATA_DIR/"Portfolios_Formed_on_AC.csv"))
