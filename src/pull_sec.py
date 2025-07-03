@@ -7,18 +7,19 @@ from settings import config
 import time
 import pickle
 
-SEC_API_KEY = config("SEC_API") 
+SEC_API_KEY = config("SEC_API")
 START_DATE = config("START_DATE")
 END_DATE = config("END_DATE")
 OPENAI_SECRET_KEY = config("OPENAI_SECRET")
 DATA_DIR = config("DATA_DIR")
 CHECK_POINT = DATA_DIR / "event_log.pkl"
 
-client = OpenAI(api_key=OPENAI_SECRET_KEY, max_retries = 5 )
+client = OpenAI(api_key=OPENAI_SECRET_KEY, max_retries=5)
 
 
 query_api = QueryApi(api_key=SEC_API_KEY)
 extractorApi = ExtractorApi(api_key=SEC_API_KEY)
+
 
 def get_section_with_retry(url, section, retries=3, delay=2):
     for attempt in range(retries):
@@ -26,43 +27,64 @@ def get_section_with_retry(url, section, retries=3, delay=2):
             return extractorApi.get_section(url, section, "text")
         except Exception as e:
             if "429" in str(e):
-                print(f"[SEC API] 429 Too Many Requests on {section} for {url} (attempt {attempt+1})")
+                print(
+                    f"[SEC API] 429 Too Many Requests on {section} for {url} (attempt {attempt + 1})"
+                )
                 time.sleep(delay * (attempt + 1))
             else:
                 print(f"[SEC API] Other error on {section}: {e}")
                 break
     return ""
 
+
 def classify_filing(url):
     """
     This method feeds SEC 8-K section 7.1 and 8.1 to the OPENAI api and returns corresponding events
     It is useful in the sense that it parallelizes GPT calls, SEC api calls which are a very expensive operation.
     """
-    extracted_section_7 = get_section_with_retry(url,"7-1")
+    extracted_section_7 = get_section_with_retry(url, "7-1")
     extracted_section_8 = get_section_with_retry(url, "8-1")
     text = extracted_section_7 + extracted_section_8
-    
-    if (len(text) < 10) or not(("fda" in text.lower()) or ("phase" in text.lower())) : # Doesn't pass texts that are less than length 10 
+
+    if (len(text) < 10) or not (
+        ("fda" in text.lower()) or ("phase" in text.lower())
+    ):  # Doesn't pass texts that are less than length 10
         print(text)
         return None
-    
+
     try:
-        instructions = """Suppose you are an investment manager.
-                    If the text clearly states that a Phase 1/2/3 trial successfully met its primary endpoint (e.g. “met its primary endpoint,” “demonstrated significant improvement,” “positive topline results,” “successfully completed,” etc.), return 1, 2, or 3 respectively.
-                    Use only the number *immediately following* the word “Phase” for Phase1/2/3.
-                    If it describes an NDA or BLA submission or resubmission, return 4.
-                    If it describes FDA approval (including PMA or accelerated approval), return 5.
-                    Otherwise (including mere “announcing data,” “first doses,” “Phase 2/3” labels without a clear success statement, or any negative/mixed results like “did not achieve significance”), return -1.;
-                    Review your responses."""
+        instructions = """Suppose you are an investment manager.  
+Review the text and return:
+1. **1, 2, or 3**  
+    If it clearly states that a Phase 1/2/3 trial **successfully met its primary endpoint** \n
+    (e.g. “met its primary endpoint,” “positive topline results,” “demonstrated significant improvement”), \n
+    return **1**, **2**, or **3**, using only the number immediately following the word “Phase.”
+
+2. **4**  
+    If it announces a **new** NDA or BLA being **filed**, **submitted**, or **resubmitted**, return **4**.
+
+3. **5**  
+    If it describes receipt of a **Complete Response Letter** (CRL) from the FDA, return **5**.
+
+4. **6**  
+    If it announces a **new FDA approval event**—i.e., it contains an FDA-approval term **plus** a new-approval verb or date \n
+    (e.g. “received FDA approval on [date],” “was approved by the FDA on [date],” “gained accelerated approval”), return **6**.
+
+5. **-1**  
+    Otherwise (including background mentions of existing approvals, withdrawals, “announcing data,” “first doses,” negative/mixed trial results, historical recaps, etc.), return **-1**.
+
+    Review your reponses.
+    """
         response = client.responses.create(
             model="gpt-4o-mini",
-            instructions = instructions,
+            instructions=instructions,
             input=text,
-            )
+        )
         return int(response.output_text.strip())
-    
+
     except Exception as e:
         return None
+
 
 def extract_intervals(binary_matrix):
     results = []
@@ -86,6 +108,7 @@ def extract_intervals(binary_matrix):
     df = pd.DataFrame(results)
 
     return df
+
 
 def pull_filings_link(df):
     # df is a panel data with holdings of VHT ETF
@@ -113,8 +136,8 @@ def pull_filings_link(df):
     for ticker in tqdm(merge_df["ticker"].unique(), desc="Processing each tickers"):
         part_df = merge_df[merge_df["ticker"].isin([ticker])]  # only single ticker
         date_ranges = list(
-            part_df[["start_date", "end_date"]].itertuples(index=False, name=None) 
-        )  
+            part_df[["start_date", "end_date"]].itertuples(index=False, name=None)
+        )
         should_clauses = [
             {
                 "range": {
@@ -136,7 +159,7 @@ def pull_filings_link(df):
                         "must": [
                             {
                                 "query_string": {
-                                    "query": f'ticker:{ticker} AND formType:"8-K" AND (items : "7.01" OR items : "8.01")'  # Only Scrap 7-1, 8-1  
+                                    "query": f'ticker:{ticker} AND formType:"8-K" AND (items : "7.01" OR items : "8.01")'  # Only Scrap 7-1, 8-1
                                 }
                             }
                         ],
@@ -186,19 +209,19 @@ def pull_filings_link(df):
             filing_dict[ticker]["event"] = []
 
         # Change
-        filing_urls = filing_dict[ticker]['linkToFilingDetails']
-        with ThreadPoolExecutor( max_workers=20) as executor:
-            events = list(executor.map(classify_filing,filing_urls))
-        filing_dict[ticker]['event'] = events
+        filing_urls = filing_dict[ticker]["linkToFilingDetails"]
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            events = list(executor.map(classify_filing, filing_urls))
+        filing_dict[ticker]["event"] = events
 
-        if idx % 10 == 0 : 
+        if idx % 10 == 0:
             with open(CHECK_POINT, "wb") as f:
                 pickle.dump(filing_dict, f)
             # print(f" Checkpoint saved at ticker {idx}")
             # print(f"Saving to {CHECK_POINT.resolve()}")
             # print(f"📦 filing_dict size at idx {idx}: {len(filing_dict)}")
             # print(f"📦 {ticker} has {len(filing_dict[ticker]['linkToFilingDetails'])} filings")
-        print(filing_dict[ticker]['event'])
+        print(filing_dict[ticker]["event"])
     return filing_dict
 
 
@@ -206,13 +229,9 @@ if __name__ == "__main__":
     # Note : it takes around 1hr to produce .pkl file
     df = pd.read_parquet(DATA_DIR / "vht_holdings.parquet")
     filings = pull_filings_link(df)
-    
+
     with open(DATA_DIR / "filings_dict.pkl", "wb") as f:
         pickle.dump(filings, f)
 
     # with open(DATA_DIR / "filing_dict.pkl","rb") as f:
     #     pickle.load(f)
-    
-
-
-    
