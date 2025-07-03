@@ -93,9 +93,6 @@ def auto_read_first_table_from_txt(data_str):
     return df
 
 if __name__ == "__main__":
-    download_and_process_zip(FACTOR_DESCRIPTIONS)
-
-if __name__ == "__main__":
 
     # download_and_save_all_factors()
     print(pd.read_csv(DATA_DIR/"F-F_LT_Reversal_Factor.csv"))
