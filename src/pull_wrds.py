@@ -131,7 +131,7 @@ if __name__ == "__main__":
     with open(DATA_DIR/"filings_dict.pkl", "rb") as f:
         filings_dict = pickle.load(f)
     tickers = list(filings_dict.keys())
-    ret = pull_crsp_returns(START_DATE, END_DATE , tickers = ['AAPL','MSFT'],wrds_username = WRDS_USERNAME, monthly = True)
+    ret = pull_crsp_returns(START_DATE, END_DATE , tickers = tickers ,wrds_username = WRDS_USERNAME, monthly = True)
 
     ret.to_parquet(DATA_DIR/"vht_returns.parquet")
     ### Code ends
