@@ -5,13 +5,14 @@ import wrds
 
 from settings import config
 from pathlib import Path
+import pickle
 
 OUTPUT_DIR = config("OUTPUT_DIR")
 DATA_DIR = config("DATA_DIR")
 WRDS_USERNAME = config("WRDS_USERNAME")
 START_DATE = config("START_DATE")
 END_DATE = config("END_DATE")
-FAMA_DATA_DIR  = config('FAMA_DATA_DIR')
+# FAMA_DATA_DIR  = config('FAMA_DATA_DIR')
 
 
 def pull_lseg(START_DATE, END_DATE,wrds_username = WRDS_USERNAME):
@@ -121,12 +122,15 @@ if __name__ == "__main__":
 
 
     # holdings = load_lseg()
-    temp = pull_crsp_returns(START_DATE, END_DATE , tickers = ['AAPL','MSFT'],wrds_username = WRDS_USERNAME, monthly = True)
-    print(temp)
 
-    holdings = load_lseg()
-    print(holdings)
-    
-    fffct_5plusmom = pull_famafrench_5fctplusmom_monthly_wrds(START_DATE, END_DATE, wrds_username = WRDS_USERNAME)
-    fffct_5plusmom.to_csv(FAMA_DATA_DIR/"famafrench_5fct_momentum_monthly.csv")
+    ### Code for pulling returns of our interest 
+    with open(DATA_DIR/"filings_dict.pkl", "rb") as f:
+        filings_dict = pickle.load(f)
+    tickers = list(filings_dict.keys())
+    ret = pull_crsp_returns(START_DATE, END_DATE , tickers = tickers ,wrds_username = WRDS_USERNAME, monthly = False)
+    ret.to_parquet(DATA_DIR/"vht_returns.parquet")
+    ### Code ends
+
+    print(pd.read_parquet(DATA_DIR/'vht_returns.parquet'))
+    print(START_DATE)
 
