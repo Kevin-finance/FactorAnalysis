@@ -131,11 +131,12 @@ if __name__ == "__main__":
     with open(DATA_DIR/"filings_dict.pkl", "rb") as f:
         filings_dict = pickle.load(f)
     tickers = list(filings_dict.keys())
-    ret = pull_crsp_returns(START_DATE, END_DATE , tickers = tickers ,wrds_username = WRDS_USERNAME, monthly = True)
+    ret_monthly = pull_crsp_returns(START_DATE, END_DATE , tickers = tickers ,wrds_username = WRDS_USERNAME, monthly = True)
+    ret_daily = pull_crsp_returns(START_DATE, END_DATE , tickers = tickers ,wrds_username = WRDS_USERNAME, monthly = False)
+    ret_monthly.to_parquet(DATA_DIR/"vht_mon_returns.parquet")
+    ret_daily.to_parquet(DATA_DIR/"vht_dly_returns.parquet")
 
-    ret.to_parquet(DATA_DIR/"vht_returns.parquet")
-    ### Code ends
-
-    print(pd.read_parquet(DATA_DIR/'vht_returns.parquet'))
+    print(pd.read_parquet(DATA_DIR/'vht_mon_returns.parquet'))
+    print(pd.read_parquet(DATA_DIR/'vht_dly_returns.parquet'))
     print(START_DATE)
 
