@@ -39,48 +39,43 @@ def pull_lseg(START_DATE, END_DATE,wrds_username = WRDS_USERNAME):
     return holdings
 
 
-def fetch_crsp_data(tickers, start_date, end_date, wrds_username):
-    """
-    Fetches specified stock data from WRDS CRSP table (crsp_a_stock.wrds_dsfv2_query).
+def pull_crsp_returns(START_DATE, END_DATE, tickers ,wrds_username = WRDS_USERNAME, monthly= True):
 
-    Parameters:
-    tickers (list): List of ticker symbols to retrieve.
-    start_date (str): Starting date in 'YYYY-MM-DD' format.
-    end_date (str): Ending date in 'YYYY-MM-DD' format.
-    wrds_username (str): Your WRDS username.
-
-    Returns:
-    pd.DataFrame: DataFrame containing requested data.
-    """
-
-    db = wrds.Connection(wrds_username=wrds_username)
-
-    query = f"""
-        SELECT
-            dispermno,            -- PERMNO of the Security Received
-            dispermco,            -- PERMCO of the Issuer Providing Payment
-            issuertype,           -- Issuer Type
-            securitytype,         -- Security Type
-            securitysubtype,      -- Security Sub-Type
-            dlyret,               -- Daily Total Return
-            dlyretx,              -- Daily Price Return
-            shrout,               -- Shares Outstanding
-            dlyprc,               -- Daily Price
-            tradingstatusflg,     -- Trading Status Flag
-            usincflg,             -- US Incorporation Flag
-            primaryexch,          -- Primary Exchange
-            conditionaltype,      -- Conditional Type
-            ticker,               -- Ticker
-            dlycaldt              -- Daily Calendar Date
-        FROM crsp_a_stock.wrds_dsfv2_query
-        WHERE ticker IN ({','.join([f"'{t}'" for t in tickers])})
-        AND dlycaldt BETWEEN '{start_date}' AND '{end_date}'
-    """
+    """Pull necessary returns of basket of VHT holding regardless of its delisted status
+    mthret: Monthly return including dividends
+    mthretx: Monthly return excluding dividends
+    mthprc: 
     
-    df = db.raw_sql(query)
+    
+    """
+    db = wrds.Connection(wrds_username=wrds_username)
+    ticker_str = ', '.join([f"'{t}'" for t in tickers])
+    if monthly:
+        sql_query = f"""
+                        Select a.permno, a.permco, a.mthcaldt, a.ticker,
+                        a.issuertype, a.securitytype, a.securitysubtype, a.sharetype, a.usincflg, 
+                        a.primaryexch, a.conditionaltype, a.tradingstatusflg,
+                        a.mthret, a.mthretx, a.shrout, a.mthprc
+                        from crsp.msf_v2 as a
+                        where a.mthcaldt between '{START_DATE}' and '{END_DATE}'
+                        AND a.ticker IN ({ticker_str})
+                    """
+        crsp = db.raw_sql(sql_query, date_cols=["mthcaldt"])
+    else: 
+        sql_query = f"""
+                        Select a.permno, a.permco, a.dlycaldt, a.ticker,
+                        a.issuertype, a.securitytype, a.securitysubtype, a.sharetype, a.usincflg, 
+                        a.primaryexch, a.conditionaltype, a.tradingstatusflg,
+                        a.dlyret, a.dlyretx, a.shrout, a.dlyprc
+                        from crsp.dsf_v2 as a
+                        where a.dlycaldt between '{START_DATE}' and '{END_DATE}'
+                        AND a.ticker IN({ticker_str})
+                    """
+        crsp = db.raw_sql(sql_query, date_cols=["dlycaldt"])
     db.close()
 
-    return df
+    return crsp
+
 
 
 def pull_famafrench_5fctplusmom_monthly_wrds(start_date, end_date, wrds_username):
@@ -136,7 +131,8 @@ if __name__ == "__main__":
     with open(DATA_DIR/"filings_dict.pkl", "rb") as f:
         filings_dict = pickle.load(f)
     tickers = list(filings_dict.keys())
-    ret = fetch_crsp_data(tickers, START_DATE, END_DATE, wrds_username = WRDS_USERNAME)
+    ret = pull_crsp_returns(START_DATE, END_DATE , tickers = ['AAPL','MSFT'],wrds_username = WRDS_USERNAME, monthly = True)
+
     ret.to_parquet(DATA_DIR/"vht_returns.parquet")
     ### Code ends
 
