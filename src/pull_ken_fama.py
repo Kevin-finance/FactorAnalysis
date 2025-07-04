@@ -72,21 +72,14 @@ def auto_read_first_table_from_txt(data_str):
 
     data_start = next(idx for idx, line in enumerate(lines) if line.strip().startswith(('19', '20')))
     data_end = next((idx for idx in range(data_start, len(lines)) if lines[idx].strip() == ""), len(lines))
-
     data_lines = lines[data_start:data_end]
+    header_line = lines[data_start - 1]
 
-    header_line = lines[data_start - 1].strip().split()
-    csv_str = f"date,{','.join(header_line)}\n"
-
-    for line in data_lines:
-        parts = line.strip().split()
-        csv_str += ','.join(parts) + '\n'
-
-    df = pd.read_csv(StringIO(csv_str), index_col=0, parse_dates=False)
-    df.index = pd.to_datetime(df.index, format='%Y%m')
-    df.index.name = 'date'
+    table_str = '\n'.join([header_line] + data_lines)
+    df = pd.read_fwf(StringIO(table_str), index_col=0)
+    df.index = pd.to_datetime(df.index, format='%Y%m', errors='coerce')
     df = df[(df.index >= START_DATE) & (df.index <= END_DATE)]
-    
+    df.index.name = 'date'
     df.replace([-99.99, -999], pd.NA, inplace=True)
     df = df.apply(pd.to_numeric, errors='coerce') / 100
 
