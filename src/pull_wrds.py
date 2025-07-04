@@ -5,6 +5,7 @@ import wrds
 
 from settings import config
 from pathlib import Path
+import pickle
 
 OUTPUT_DIR = config("OUTPUT_DIR")
 DATA_DIR = config("DATA_DIR")
@@ -120,17 +121,25 @@ def _demo():
 
 
 if __name__ == "__main__":
+    ### pulling holdings of etf
     holdings = pull_lseg(START_DATE, END_DATE , wrds_username=WRDS_USERNAME)
     holdings.to_parquet(DATA_DIR / "vht_holdings.parquet")
-
     holdings = load_lseg()
     print(holdings)
-    
+
+    ### pulling famafrench 5 fcts + momentum
     fffct_5plusmom = pull_famafrench_5fctplusmom_monthly_wrds(START_DATE, END_DATE, wrds_username = WRDS_USERNAME)
     fffct_5plusmom.to_csv(DATA_DIR/"famafrench_5fct_momentum_monthly.csv")
+    print(fffct_5plusmom)
     
-    df = holdings.copy()
-    df['holdings'] = 1
-    ticker_list = df.pivot_table(index = 'rdate', columns = 'ticker', values = 'holdings').columns.to_list()
-    daily_rtn = fetch_crsp_data(ticker_list, START_DATE, END_DATE, wrds_username = WRDS_USERNAME)
-    daily_rtn.to_parquet(DATA_DIR / "vht_stk_daily_rtn.parquet")
+    ### pulling returns of our interest 
+    with open(DATA_DIR/"filings_dict.pkl", "rb") as f:
+        filings_dict = pickle.load(f)
+    tickers = list(filings_dict.keys())
+    ret = fetch_crsp_data(tickers, START_DATE, END_DATE, wrds_username = WRDS_USERNAME)
+    ret.to_parquet(DATA_DIR/"vht_returns.parquet")
+    ### Code ends
+
+    print(pd.read_parquet(DATA_DIR/'vht_returns.parquet'))
+    print(START_DATE)
+
