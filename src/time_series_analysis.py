@@ -22,7 +22,7 @@ def adf_test(df,map_df,trend_id = None,alpha=0.05,second_pass = False ):
         if second_pass:
             reg = 'c'
         else: 
-            reg = 'ct' if id in trend_id else 'c'
+            reg = 'ct' if id in trend_id else 'c' 
 
         try:
             result = adfuller(series, regression=reg, max_lag=1, autolag = 'tstat')
