@@ -6,6 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 from settings import config
 import time
 import pickle
+from operator import itemgetter
+import math
 
 SEC_API_KEY = config("SEC_API")
 START_DATE = config("START_DATE")
@@ -49,38 +51,73 @@ def classify_filing(url):
     if (len(text) < 10) or not (
         ("fda" in text.lower()) or ("phase" in text.lower())
     ):  # Doesn't pass texts that are less than length 10
-        print(text)
         return None
-
+    # reference : https://platform.openai.com/docs/api-reference/responses/object
     try:
-        instructions = """Suppose you are an investment manager.  
-Review the text and return:
-1. **1, 2, or 3**  
-    If it clearly states that a Phase 1/2/3 trial **successfully met its primary endpoint** \n
-    (e.g. “met its primary endpoint,” “positive topline results,” “demonstrated significant improvement”), \n
-    return **1**, **2**, or **3**, using only the number immediately following the word “Phase.”
+        instructions = """"Suppose you are an investment manager.  
+1. 
+If it clearly states that a Phase 1, Phase 1a or Phase 1b trial successfully met its primary endpoint
+(e.g. “met its primary endpoint,” “positive topline results,” “demonstrated significant improvement”), return 1.
+Example1. On September 18, 2023, Aclaris Therapeutics, Inc. (the “Company”) issued a press release announcing positive preliminary results from its Phase 1 multiple ascending dose trial of ATI-2138, an investigational oral covalent ITK/JAK3 inhibitor (the “ATI-2138 Phase 1 Results”).
+Example2. On April 9, 2024, Alkermes plc (the “Company”) announced positive topline results from the narcolepsy type 2 and idiopathic hypersomnia cohorts of its phase 1b study in which it evaluated ALKS 2680, the Company’s novel, investigational, oral orexin 2 receptor agonist
 
-2. **4**  
-    If it announces a **new** NDA or BLA being **filed**, **submitted**, or **resubmitted**, return **4**.
 
-3. **5**  
-    If it describes receipt of a **Complete Response Letter** (CRL) from the FDA, return **5**.
+2.
+Same for Phase 2/2a/2b → return **2**
+If Phase 1/1a/1b and Phase2/2a/2b is mixed then classify as 2
+Example1. On January 28, 2020, Akcea Therapeutics, Inc. (the “Company”) announced positive topline results from the Phase 2 study of AKCEA-ANGPTL3-LRx in patients with hypertriglyceridemia, type 2 diabetes and non-alcoholic fatty liver disease.
+Example2. On April 12, 2021, Sage Therapeutics, Inc. issued a press release titled “Sage Therapeutics and Biogen Announce SAGE-324 Phase 2 Placebo-Controlled KINETIC Study in Essential Tremor Met Primary Endpoint.”
 
-4. **6**  
-    If it announces a **new FDA approval event**—i.e., it contains an FDA-approval term **plus** a new-approval verb or date \n
-    (e.g. “received FDA approval on [date],” “was approved by the FDA on [date],” “gained accelerated approval”), return **6**.
+3.
+Same for Phase 3 → return **3**
+If Phase Phase2/2a/2b and Phase3 is mixed then classify as 3
+Example1. On January 26, 2021, Agios Pharmaceuticals, Inc. issued a press release announcing that its global phase 3 ACTIVATE-T trial of mitapivat in adults with pyruvate kinase deficiency who are regularly transfused met its primary endpoint.
+Example2. On September 26, 2016, Array issued a press release announcing the top-line results from Part 1 of the ongoing Phase 3 clinical trial of binimetinib and encorafenib in patients with advanced BRAF-mutant melanoma, known as the COLUMBUS trial. The study met its primary endpoint of improving progression-free survival.
+Example3. On December 1, 2022, Anavex Life Sciences Corp., a Nevada corporation (the “Company”) issued a press release (the “Press Release”) providing top line data from its Phase 2b/3 double-blind, placebo-controlled trial of ANAVEX®2-73 in Alzheimer’s disease. The trial met its primary and key secondary endpoints with statistically significant results.
+Example4. On January 13, 2020, Biohaven Pharmaceutical Holding Company Ltd. will be making an investor presentation (the “Presentation”), which includes updates for communication received from the United States Food and Drug Administration in December 2019, summarizing a Late Cycle Communication regarding the rimegepant new drug application review, and positive topline results in the pivotal Phase 2/3 study of vazegepant.
 
-5. **-1**  
-    Otherwise (including background mentions of existing approvals, withdrawals, “announcing data,” “first doses,” negative/mixed trial results, historical recaps, etc.), return **-1**.
+4.
+If it announces a new NDA or BLA being filed, submitted, or resubmitted, return 4.
+Example1. In the press release dated October 31, 2016, ARIAD Pharmaceuticals, Inc. (“ARIAD” or the “Company”) announced that the U.S. Food and Drug Administration (FDA) has accepted for review the New Drug Application (NDA) for ARIAD’s investigational oral anaplastic lymphoma kinase (ALK) inhibitor, brigatinib, in patients with metastatic ALK-positive (ALK+) non-small cell lung cancer (NSCLC) who have progressed on crizotinib
+Example2. On January 19, 2016, Incyte Corporation (“Incyte”) and Eli Lilly and Company (“Lilly”) announced that Lilly had submitted a new drug application (“NDA”) to the U.S. Food and Drug Administration (“FDA”) for the approval of oral once-daily baricitinib for the treatment of moderately-to-severely active rheumatoid arthritis.
 
-    Review your reponses.
+
+5.
+**Only** if the text contains the exact phrase **“Complete Response Letter”** or the abbreviation **“CRL”** (case-insensitive) in the context of **receipt** (e.g. “received a CRL,” “received a Complete Response Letter”), return **5**..
+Example1. On August 11, 2021, FibroGen, Inc. (“FibroGen”) issued a press release announcing that the U.S. Food and Drug Administration (the “FDA”) has issued a complete response letter regarding the New Drug Application (“NDA”) for roxadustat for the treatment of anemia of chronic kidney disease. The letter indicates the FDA will not approve the roxadustat NDA in its present form and has requested additional clinical study of roxadustat to be conducted, prior to resubmission.
+Example2. On April 14, 2017, Eli Lilly and Company and Incyte Corporation announced that the U.S. Food and Drug Administration (“FDA”) has issued a complete response letter for the New Drug Application of the investigational medicine baricitinib, a once-daily oral medication for the treatment of moderate-to-severe rheumatoid arthritis.
+
+
+6.
+If it announces a new FDA approval event—i.e., contains an approval term plus a new-approval verb or date
+Example1. On February 13, 2018, ABIOMED, Inc. issued a press release reporting that is has received an expanded U.S. Food and Drug Administration (FDA) Pre-Market Approval (PMA) for its Impella 2.5®, Impella CP®, Impella 5.0® and Impella LD® heart pumps to provide treatment for heart failure associated with cardiomyopathy leading to cardiogenic shock.
+Example2. On January 31, 2020, Aimmune Therapeutics, Inc. (“Aimmune” or the “Company”) issued a press release announcing that the U.S. Food and Drug Administration had approved PALFORZIA™ (Peanut (Arachis hypogaea) Allergen Powder-dnfp). PALFORZIA is the first approved treatment for patients with peanut allergy. PALFORZIA is an oral immunotherapy indicated for the mitigation of allergic reactions, including anaphylaxis, that may occur with accidental exposure to peanut.
+
+
+0.
+Otherwise (background mentions, negative/mixed results, historical recaps, “announcing data,” “first doses,” etc.), return 0.
+
+Return 0~6 only. Just the number. No dash or words.
+Review your output. 
     """
-        response = client.responses.create(
+ 
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
-            instructions=instructions,
-            input=text,
+            messages=[
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": text}
+            ],
+            temperature=0,
+            logprobs=True,
+            top_logprobs=7, # Show only top 7 tokens' log prob
+            max_tokens = 1, # maximum token size = 1
         )
-        return int(response.output_text.strip())
+        logprobs_dict = {
+        top.token.strip(): math.exp(top.logprob)
+        for top in response.choices[0].logprobs.content[0].top_logprobs}
+        print(logprobs_dict)
+
+        return logprobs_dict
 
     except Exception as e:
         return None
@@ -109,6 +146,10 @@ def extract_intervals(binary_matrix):
 
     return df
 
+def extract_best_token(logprob_dict):
+    if not logprob_dict:
+        return None
+    return max(logprob_dict.items(), key=itemgetter(1))[0]  # returns the key with highest log prob
 
 def pull_filings_link(df):
     # df is a panel data with holdings of VHT ETF
@@ -204,34 +245,40 @@ def pull_filings_link(df):
 
     # Distinguishing events
     for idx, ticker in enumerate(tqdm(filing_dict, desc="Event Processing")):
-        # print(ticker)
         if "event" not in filing_dict[ticker]:
             filing_dict[ticker]["event"] = []
+            filing_dict[ticker]["logprob"] = []
 
-        # Change
         filing_urls = filing_dict[ticker]["linkToFilingDetails"]
         with ThreadPoolExecutor(max_workers=20) as executor:
-            events = list(executor.map(classify_filing, filing_urls))
-        filing_dict[ticker]["event"] = events
+            # classify_filing either returns none or a dictionary of log prob when certain event is involved.
+            logprobs_list = list(executor.map(classify_filing, filing_urls))  
+
+        # Pull the token with highest probability for each filings
+        best_tokens = [
+            int(token) if token is not None else None
+            for token in [extract_best_token(lp) for lp in logprobs_list]]
+
+        filing_dict[ticker]["event"] = best_tokens
+        filing_dict[ticker]["logprob"] = logprobs_list
+        # print(filing_dict[ticker]["event"])
+        # print(filing_dict[ticker]["logprob"])
 
         if idx % 10 == 0:
             with open(CHECK_POINT, "wb") as f:
                 pickle.dump(filing_dict, f)
-            # print(f" Checkpoint saved at ticker {idx}")
-            # print(f"Saving to {CHECK_POINT.resolve()}")
-            # print(f"📦 filing_dict size at idx {idx}: {len(filing_dict)}")
-            # print(f"📦 {ticker} has {len(filing_dict[ticker]['linkToFilingDetails'])} filings")
-        print(filing_dict[ticker]["event"])
     return filing_dict
 
 
+
 if __name__ == "__main__":
-    # Note : it takes around 1hr to produce .pkl file
+    # # Note : it takes around 1hr to produce .pkl file
     df = pd.read_parquet(DATA_DIR / "vht_holdings.parquet")
     filings = pull_filings_link(df)
 
     with open(DATA_DIR / "filings_dict.pkl", "wb") as f:
         pickle.dump(filings, f)
 
-    # with open(DATA_DIR / "filing_dict.pkl","rb") as f:
-    #     pickle.load(f)
+    # with open(DATA_DIR / "filings_dict.pkl","rb") as f:
+    #     temp = pickle.load(f)
+    
