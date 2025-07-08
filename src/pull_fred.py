@@ -50,7 +50,7 @@ def pull_fred(num,order_by,sort_order,release = 'latest', *args,**kwargs):
 
     return (mapping_df,merged)
 
-if __name__=="__main__":
+def main():
     # If it has subcategories then it will return no series
     category_id = {"CPI & PCE Prices": 9, "Producer Price Indexes":31,
                    "JOLTS":32241,"Weekly Initial Claims":32240,
@@ -63,6 +63,9 @@ if __name__=="__main__":
     # monthly data is represented by the first day of the month
     mapping_df.to_parquet(DATA_DIR/"macro_map.parquet")
     merged.to_parquet(DATA_DIR/"macro_latest_series.parquet")
+
+if __name__=="__main__":
+    main()
 
   
 

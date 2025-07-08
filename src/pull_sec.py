@@ -75,6 +75,7 @@ Example1. On January 26, 2021, Agios Pharmaceuticals, Inc. issued a press releas
 Example2. On September 26, 2016, Array issued a press release announcing the top-line results from Part 1 of the ongoing Phase 3 clinical trial of binimetinib and encorafenib in patients with advanced BRAF-mutant melanoma, known as the COLUMBUS trial. The study met its primary endpoint of improving progression-free survival.
 Example3. On December 1, 2022, Anavex Life Sciences Corp., a Nevada corporation (the “Company”) issued a press release (the “Press Release”) providing top line data from its Phase 2b/3 double-blind, placebo-controlled trial of ANAVEX®2-73 in Alzheimer’s disease. The trial met its primary and key secondary endpoints with statistically significant results.
 Example4. On January 13, 2020, Biohaven Pharmaceutical Holding Company Ltd. will be making an investor presentation (the “Presentation”), which includes updates for communication received from the United States Food and Drug Administration in December 2019, summarizing a Late Cycle Communication regarding the rimegepant new drug application review, and positive topline results in the pivotal Phase 2/3 study of vazegepant.
+Example5. On April 27, 2020, Axsome Therapeutics, Inc. (the “Company”) issued a press release announcing that AXS-05 met the prespecified primary endpoint and significantly improved agitation in patients with Alzheimer’s disease in the Company’s ADVANCE-1 Phase 2/3 trial.
 
 4.
 If it announces a new NDA or BLA being filed, submitted, or resubmitted, return 4.
@@ -107,7 +108,7 @@ Review your output.
                 {"role": "system", "content": instructions},
                 {"role": "user", "content": text}
             ],
-            temperature=0,
+            temperature=0, # to ensure fully deterministic behavior (argmax)
             logprobs=True,
             top_logprobs=7, # Show only top 7 tokens' log prob
             max_tokens = 1, # maximum token size = 1
@@ -273,12 +274,12 @@ def pull_filings_link(df):
 
 if __name__ == "__main__":
     # # Note : it takes around 1hr to produce .pkl file
-    df = pd.read_parquet(DATA_DIR / "vht_holdings.parquet")
-    filings = pull_filings_link(df)
+    # df = pd.read_parquet(DATA_DIR / "vht_holdings.parquet")
+    # filings = pull_filings_link(df)
 
-    with open(DATA_DIR / "filings_dict.pkl", "wb") as f:
-        pickle.dump(filings, f)
+    # with open(DATA_DIR / "filings_dict.pkl", "wb") as f:
+    #     pickle.dump(filings, f)
 
-    # with open(DATA_DIR / "filings_dict.pkl","rb") as f:
-    #     temp = pickle.load(f)
+    with open(DATA_DIR / "filings_dict.pkl","rb") as f:
+        temp = pickle.load(f)
     
