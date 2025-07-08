@@ -120,22 +120,24 @@ if __name__ == "__main__":
     holdings = pull_lseg(START_DATE, END_DATE , wrds_username=WRDS_USERNAME)
     holdings.to_parquet(DATA_DIR / "vht_holdings.parquet")
     holdings = load_lseg()
-    print(holdings)
 
     ### pulling famafrench 5 fcts + momentum
     fffct_5plusmom = pull_famafrench_5fctplusmom_monthly_wrds(START_DATE, END_DATE, wrds_username = WRDS_USERNAME)
     fffct_5plusmom.to_csv(DATA_DIR/"famafrench_5fct_momentum_monthly.csv")
-    print(fffct_5plusmom)
     
     ### pulling returns of our interest 
     with open(DATA_DIR/"filings_dict.pkl", "rb") as f:
         filings_dict = pickle.load(f)
+        
     tickers = list(filings_dict.keys())
-    ret = pull_crsp_returns(START_DATE, END_DATE , tickers = tickers ,wrds_username = WRDS_USERNAME, monthly = True)
+    mon_ret = pull_crsp_returns(START_DATE, END_DATE , tickers = tickers,wrds_username = WRDS_USERNAME, monthly = True)
+    mon_ret_df = pd.pivot_table(mon_ret,index='mthcaldt',values='mthret',columns='ticker')
+    mon_ret_df.to_parquet(DATA_DIR/"vht_mon_ret.parquet")
 
-    ret.to_parquet(DATA_DIR/"vht_returns.parquet")
+    dly_ret = pull_crsp_returns(START_DATE, END_DATE , tickers = tickers,wrds_username = WRDS_USERNAME, monthly = False)
+    dly_ret_df = pd.pivot_table(dly_ret,index='dlycaldt',values='dlyret',columns='ticker')
+    dly_ret_df.to_parquet(DATA_DIR/"vht_dly_ret.parquet")
+
+    
     ### Code ends
-
-    print(pd.read_parquet(DATA_DIR/'vht_returns.parquet'))
-    print(START_DATE)
 
