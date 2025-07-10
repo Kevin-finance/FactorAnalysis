@@ -20,7 +20,8 @@ FACTOR_FILES = {
     'Variance': 'Portfolios_Formed_on_VAR.csv',
     'Residual_Variance': 'Portfolios_Formed_on_RESVAR.csv',
     'ST_Reversal': 'F-F_ST_Reversal_Factor.csv',
-    'LT_Reversal': 'F-F_LT_Reversal_Factor.csv'
+    'LT_Reversal': 'F-F_LT_Reversal_Factor.csv',
+    'Momentum': 'Developed_Mom_Factor.csv'
 }
 
 def auto_read_first_table_from_string(data_str):
