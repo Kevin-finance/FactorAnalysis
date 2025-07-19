@@ -77,7 +77,7 @@ d["PIPELINE_THEME"] = _config("PIPELINE_THEME", default="pipeline")
 d["OPENAI_SECRET"]=_config("OPENAI_SECRET", default = None) # OPENAI API SECRET KEY
 d['SEC_API'] = _config("SEC_API", default = None) # sec-api.io API
 d['FRED_API'] = _config("FRED_API", default = None) # FRED api
-d['WRDS_USERNAME'] = _config("WRDS_USERNAME") # wrds username
+d['WRDS_USERNAME'] = _config("WRDS_USERNAME", default = None) # wrds username
 
 ## Paths
 d["DATA_DIR"] = if_relative_make_abs(_config('DATA_DIR', default=Path('_data'), cast=Path))

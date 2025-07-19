@@ -82,7 +82,7 @@ def pull_momentum_data(START_DATE, END_DATE):
         SELECT
             gvkey
         FROM comp_na_daily_all.company
-        WHERE comp_na_daily_all.company.gvkey IN (
+        WHERE comp_na_daily_all.company.tic IN (
             '165240'
         )
     ) AS id_table 
@@ -260,6 +260,6 @@ if __name__ == '__main__':
     technical = technical_mom_indicators(vht_monthly, vht_daily)
     aqrff = aqr_ff()
     aqrt = pd.merge(technical, aqrff, 'inner',left_index= True, right_index = True)
-    output = pd.merge(aqrt,momentum_factors,'inner',right_index = True,left_index = True)
+    output = pd.merge(aqrt,momentum_factors,'inner',right_index = True,left_index = True).drop(columns = ['ni_me'])
 
     output.to_parquet(DATA_DIR/"momentum_factors.parquet")
