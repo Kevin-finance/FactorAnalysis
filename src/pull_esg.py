@@ -18,8 +18,6 @@ WRDS_USERNAME = config("WRDS_USERNAME")
 tickers = list()
 
 def pull_esg(n):
-    # This is a bit more difficult to do, We have the monthly scores of ESG Data but it is company specific, so I will weight the companies by their contribution 
-    # to VHT. This will be difficult to do dynamically. Ask about the dynamic data. 
     warnings.filterwarnings('ignore')
     
     tickers = list(pd.read_csv(DATA_DIR / r'russell_2000_tickers.csv')['AAMI'])
@@ -83,18 +81,17 @@ def pull_esg(n):
     years = [2020, 2021, 2022, 2023, 2024]
     top = {}
     bottom = {}
-    new_tickers = set()
+    size = round(len(tickers)/n)
 
     for col in annual.columns:                           
         s = annual[col].dropna()                         
-        
         # group by year
         grouped = s.groupby(level='year')
         
         for year in years:
             if year in grouped.groups:               
-                top[(year, col)]    = grouped.get_group(year).nlargest(n)
-                bottom[(year, col)] = grouped.get_group(year).nsmallest(n)
+                top[(year, col)]    = grouped.get_group(year).nlargest(size)
+                bottom[(year, col)] = grouped.get_group(year).nsmallest(size)
 
     top_df = (
         pd.concat(top, names=['year', 'metric'])
@@ -109,13 +106,15 @@ def pull_esg(n):
         .rename(columns={'level_2': 'ticker', 0: 'score'})
     )
     bottom_df['side'] = -1
-
-    tickers_top    = set(top_df.index.get_level_values('ticker'))
-    tickers_bottom = set(bottom_df.index.get_level_values('ticker'))
+    try:
+        tickers_top    = set(top_df.index.get_level_values('ticker'))
+        tickers_bottom = set(bottom_df.index.get_level_values('ticker'))
+    except:
+        tickers_top    = set(top_df.index.get_level_values('ticker'))
+        tickers_bottom = set(bottom_df.index.get_level_values('ticker'))
     merged = pd.concat([top_df, bottom_df])
 
     all_tickers = list(tickers_top | tickers_bottom)
-    
     daily_returns_path = DATA_DIR / 'daily_returns.parquet'
 
     top_df   = top_df.copy()
@@ -225,7 +224,7 @@ def pull_esg(n):
                                 valid_u += 1
                     # Take the average over all upper and lower separately. Then long the upper and short the lower. 
                     if valid_d > 0 and valid_u > 0:
-                        index_df.loc[idx, f'{metric}'] = (upper_return / n) - (lower_return/n)
+                        index_df.loc[idx, f'{metric}'] = upper_return - (lower_return/n)
         
         # Remove the temporary year column
         index_cols = [col for col in index_df.columns if col.startswith('ESG')]
@@ -236,6 +235,41 @@ def pull_esg(n):
 
     final = create_indices(new, paired)
     return final
+
+
+def performance_check(n):
+    """
+    n = Maximum portfolio size to evaluate (will test 10, 20, ..., n).
+
+    best_size = The portfolio size with the lowest sum of ranks.
+    rank_sums = Sum of factor‐ranks for each size (index = size).
+    ranks_df = The full ranking table (rows = size, cols = factor names).
+    """
+
+    sizes = list(range(10, n + 1, 10))
+
+    perf_dict = {}
+    for size in sizes:
+        returns = pull_esg(size)                  
+        cumul   = (returns + 1).cumprod() - 1     
+        last    = cumul.iloc[-1].abs()            
+        perf_dict[size] = last
+
+    perf_df = pd.DataFrame(perf_dict).T          
+
+    # Here, we rank all of the factors within the dataframe from the smallest to the largest. Then we will go through and sum them to see which had the best overall performance. 
+
+    ranks_df = perf_df.rank(axis=1, ascending=False, method="min")
+
+    rank_sums = ranks_df.sum(axis=1)
+
+    best_size = rank_sums.idxmin()
+
+    print("Sum of ranks by size:\n", rank_sums, "\n")
+    print(f"Best performing portfolio size is {best_size}")
+
+    return best_size, rank_sums, ranks_df
+
 
 
 if __name__ == '__main__':
