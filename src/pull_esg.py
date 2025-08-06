@@ -18,9 +18,7 @@ WRDS_USERNAME = config("WRDS_USERNAME")
 tickers = list()
 
 # phjwQbTPr.25ZLR
-def pull_esg(n: int,
-             years = range(2020, 2025),
-             cache_returns_path: Path = None) -> pd.DataFrame:
+def pull_esg(n, years = range(2020, 2025),cache_returns_path: Path = None) -> pd.DataFrame:
     """
     Build ESG long-short factor indices:
       - For each metric (fieldname) and each year, pick top-n percent (long) and bottom-n percent (short) tickers by valuescore.
@@ -38,7 +36,6 @@ def pull_esg(n: int,
     try:
 
         in_list = ','.join([f"'{t}'" for t in tickers])
-
         esg_query = f"""
             SELECT
                 year,
@@ -61,16 +58,19 @@ def pull_esg(n: int,
         """
         esg = db.raw_sql(esg_query)
 
+        # Here, with annual, I am creating a pivot table that will change our index to the year, and ticker, while making the different esg fields 
+        # Column headers, and the values the respective values for each ticker. 
         annual = (
             esg.pivot_table(index=['year', 'ticker'],
                             columns='fieldname',
-                            values='valuescore',
-                            aggfunc='mean')
+                            values='valuescore')
+                            #aggfunc='mean')
         )
+        
 
 
         top_dict, bot_dict = {}, {}
-        size = round(len(tickers)/n)
+        size = max(1,round(len(tickers)*n/100))
 
         for col in annual.columns:
             s = annual[col].dropna()
@@ -85,11 +85,13 @@ def pull_esg(n: int,
             .rename('score')              
             .reset_index()                # columns =  year, metric, ticker, score
         )
+
         bot_df = (
             pd.concat(bot_dict, names=['year', 'metric'])
             .rename('score')
             .reset_index()
 )
+
 
 
         # Pairs by rank position
@@ -104,11 +106,13 @@ def pull_esg(n: int,
                 .sort_values(['year', 'metric'])
         )
         all_tickers = sorted(set(pairs['tickeru']) | set(pairs['tickerd']))
+        print(len(all_tickers))
 
         if cache_returns_path.exists():
             returns_df = pd.read_parquet(cache_returns_path)
             returns_df['date'] = pd.to_datetime(returns_df['date'])
             returns_df = returns_df.set_index('date').sort_index()
+            returns_df = returns_df.loc[~returns_df.index.duplicated(keep='first'), :]
         else:
             in_list_r = ','.join([f"'{t}'" for t in all_tickers])
             ret_query = f"""
@@ -123,8 +127,11 @@ def pull_esg(n: int,
             returns_df = (
                 crsp.pivot_table(index='date', columns='ticker', values='dlyret')
                     .sort_index()
-            )
+            ).drop_duplicates()
+            returns_df = returns_df.loc[~returns_df.index.duplicated(keep='first'), :]
             returns_df.to_parquet(cache_returns_path)
+        print(returns_df)
+
 
 
         metrics = pairs['metric'].unique()
@@ -144,14 +151,12 @@ def pull_esg(n: int,
             if long_block.shape[1] == 0 or short_block.shape[1] == 0:
                 continue
 
-            long_mean  = long_block.mean(axis=1)   
-            short_mean = short_block.mean(axis=1)
+            long_mean  = long_block.mean(axis=1, skipna = True)   
+            short_mean = short_block.mean(axis=1, skipna = True)
             index_df.loc[mask, metric] = long_mean - short_mean
 
-
-            index_df.loc[mask, metric] = long_mean - short_mean
-
-        index_df = index_df.dropna(how='all')  
+        index_df = index_df.dropna(how='all').drop_duplicates()
+        index_df = index_df.groupby(index_df.index).last()
 
         return index_df
 
