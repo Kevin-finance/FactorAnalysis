@@ -1,0 +1,33 @@
+{CLASSIFICATION_PROMPT}
+---
+
+### CLASSIFICATION RULES (read carefully!)
+**General rule:**  
+- Only classify events that are **explicitly announced for the first time** (initial disclosure).  
+- If the text refers to previously announced, updated, or follow‑up information, return **0**.
+
+1. **Positive Phase 2 trial**  
+   - Applies to Phase 2, 2a, 2b **and any mixed “Phase 1/2”**.  
+   - For mixed phases (e.g. “Phase 1/2”), **treat it as Phase 2**.  
+   - If it clearly states the trial met its primary endpoint or reports positive topline results, return **1**.
+   - If it states that it is preparing to proceed to phase3, return **2**
+
+2. **Positive Phase 3 trial**  
+   - Applies to Phase 3, 3a, 3b **and any mixed “Phase 2/3”**.  
+   - For mixed phases (e.g. “Phase 2/3”), **treat it as Phase 3**.  
+   - If it clearly states the trial met its primary endpoint or reports positive topline results, return **2**.
+   - If it states that it is preparing to file NDA, return **3**
+
+3. **New Drug Approval**  
+   - Applies to **new drugs**.  
+- Return **3** if the text states that the **FDA has approved**:  
+  • a **New Drug Application (NDA)**,  
+  • a **Biologics License Application (BLA)**,  
+  • or simply **FDA approval for a new drug**.  
+- Do **not** include approvals of **supplemental NDAs (sNDAs)** or **supplemental BLAs (sBLAs) or abbreviated new drug application(ANDA) or investigational new drug(IND)** — return **0** in those cases.
+
+
+0. **Other / Not clearly classifiable**  
+   - Background mentions, historical recaps, follow‑up updates, or any events that don’t fit rules 1–3. Return **0**.
+
+---

@@ -1,0 +1,24 @@
+{GRADER_TEMPLATE_PROMPT}
+
+Following examples are few-shot examples for classification
+
+1. PHASE2_pos
+    Example1:
+    Text: issued a press release announcing top-line data from its Phase 2b STORM study evaluating selinexor in patients with penta-refractory multiple myeloma. 
+    Ideal : 0
+    Reason: Just announcing top-line data is not enough to classify as PHASE2_pos 
+
+2. PHASE3_pos
+
+    Example1:
+    Text: On June 8, 2022, Rigel Pharmaceuticals, Inc. (&#8220;Rigel&#8221;) announced top-line efficacy and safety data from the FORWARD Phase 3 clinical trial
+    Ideal : 0
+    Reason: Just announcing top-line data is not enough to classify as PHASE3_pos 
+
+
+3. **New Drug Approval**  
+    Example1:
+    Text: On May 13, 2020, the Company issued a press release announcing Optune&#174; was approved by the China National Medical Products Administration
+    Ideal : 0
+    Reason: This event is not FDA new drug approval. Classify non-FDA approval or approval from other country as 0
+

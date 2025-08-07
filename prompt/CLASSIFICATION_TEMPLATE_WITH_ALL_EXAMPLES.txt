@@ -1,0 +1,32 @@
+{CLASSIFICATION_TEMPLATE_POS_EXAMPLES_PROMPT}
+---
+
+Negative Examples for some of the categories:
+
+---
+
+1. **Positive Phase 2 trial (Phase2/2a/2b)**
+   Example1:
+   Text: On August 15, 2022, the Company made available an updated investor presentation. Also on August 15, 2022, the Company made available a presentation regarding, and issued a press release announcing, positive initial clinical data from its Phase 1/2 trial of VRDN-001, as well as first-in-human data from its Phase 1 trial of VRDN-002.
+   Ideal : 0 
+   Reason: Although positive clinical data, you don't know if it's from Phase1 or 2.
+
+2. **Positive Phase 3 trial (Phase3/3a/3b)**
+   Example1:
+   Text: On May 9, 2017, Array issued a press release announcing the top-line results from Part 2 of the Phase 3 clinical trial of binimetinib and encorafenib in patients with advanced BRAF-mutant melanoma, known as the COLUMBUS trial.
+   Ideal : 0 
+   Reason: Just announcing top-line results doesn't suffice to classify as positive Phase 3 trial
+
+3. *New Drug Approval**
+   Example1:
+   Text: On November 28, 2023, Phathom Pharmaceuticals, Inc. (“Phathom” or the “Company”) announced the U.S. commercial launch and availability of 30-count bottles
+   Ideal: 0
+   Reason: Commerical launch is not a FDA new drug approval
+
+
+   
+
+---
+
+Return only a single number, no explanation.
+        """

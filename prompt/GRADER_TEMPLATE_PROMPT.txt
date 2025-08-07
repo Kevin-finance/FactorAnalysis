@@ -1,0 +1,13 @@
+{GRADER_PROMPT}
+
+ACCORDING TO THE FOLLOWING ORIGINAL CLASSIFICATION INSTRUCTION:
+
+--- ORIGINAL CLASSIFICATION INSTRUCTION ---
+{{CLASSIFICATION_PROMPT}}
+-------------------------------------------
+
+Now, given the event text, previous model output is the predicted class:
+
+Event text: {{item.ticket_text}}
+Predicted class: {{item.previous_pred}}
+
