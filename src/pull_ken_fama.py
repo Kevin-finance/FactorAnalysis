@@ -27,6 +27,19 @@ FACTOR_DESCRIPTIONS = [
     "Portfolios Formed on Residual Variance"
 ]
 
+FACTOR_FILES = {
+    'EP_exDiv': 'Portfolios_Formed_on_E-P_Wout_Div.csv',
+    'CFP_exDiv': 'Portfolios_Formed_on_CF-P_Wout_Div.csv',
+    'DP_exDiv': 'Portfolios_Formed_on_D-P_Wout_Div.csv',
+    'Net_Share_Issues': 'Portfolios_Formed_on_NI.csv',
+    'Accruals': 'Portfolios_Formed_on_AC.csv',
+    'Market_Beta': 'Portfolios_Formed_on_BETA.csv',
+    'Variance': 'Portfolios_Formed_on_VAR.csv',
+    'Residual_Variance': 'Portfolios_Formed_on_RESVAR.csv',
+    'ST_Reversal': 'F-F_ST_Reversal_Factor.csv',
+    'LT_Reversal': 'F-F_LT_Reversal_Factor.csv'
+}
+
 
 def download_and_process_zip(factor_descriptions, save_folder=DATA_DIR):
     if not os.path.exists(save_folder):
